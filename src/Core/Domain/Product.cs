@@ -1,31 +1,26 @@
-using System;
 using Core.Dto;
 
 namespace Core.Domain;
 
 public class Product
 {
-    private int _quantity;
-
     public string Id { get; }
     public string Sku { get; }
     public string Name { get; }
     public string Unit { get; }
-    public int Quantity => _quantity;
-    public ProductStatus Status { get; private set; }
+    public int Quantity { get; private set; }
+    public ProductStatus Status { get; private set; } = ProductStatus.Active;
 
-    // Приватний конструктор — пряме створення ззовні неможливе
-    private Product(string id, string sku, string name, string unit, int quantity, ProductStatus status = ProductStatus.Active)
+    // Конструктор приватний: створити товар можна лише через Create
+    private Product(string id, string sku, string name, string unit, int quantity)
     {
         Id = id;
         Sku = sku;
         Name = name;
         Unit = unit;
-        _quantity = quantity;
-        Status = status;
+        Quantity = quantity;
     }
 
-    // Фабричний метод для безпечного створення об'єкта
     public static Product Create(string id, string sku, string name, string unit, int quantity)
     {
         if (string.IsNullOrWhiteSpace(id))
@@ -41,31 +36,27 @@ public class Product
         return new Product(id.Trim(), sku.Trim().ToUpperInvariant(), name.Trim(), unit?.Trim() ?? "шт", quantity);
     }
 
-    // Прихід товару
     public void RegisterArrival(int amount)
     {
         if (amount <= 0)
             throw new ArgumentOutOfRangeException(nameof(amount), amount,
                 "Кількість приходу має бути більшою за нуль");
 
-        _quantity += amount;
+        Quantity += amount;
     }
 
-    // Видача товару
     public void Issue(int amount)
     {
         if (amount <= 0)
             throw new ArgumentOutOfRangeException(nameof(amount), amount,
                 "Кількість видачі має бути більшою за нуль");
-
-        if (amount > _quantity)
+        if (amount > Quantity)
             throw new InvalidOperationException(
-                $"Не можна видати {amount}: залишок {Sku} = {_quantity}");
+                $"Не можна видати {amount}: залишок {Sku} = {Quantity}");
 
-        _quantity -= amount;
+        Quantity -= amount;
     }
 
-    // Зміна статусу (State Machine через switch expression з патерном кортежу)
     public void ChangeStatus(ProductStatus newStatus)
     {
         bool allowed = (Status, newStatus) switch
@@ -74,8 +65,7 @@ public class Product
             (ProductStatus.Active, ProductStatus.Discontinued) => true,
             (ProductStatus.OutOfStock, ProductStatus.Active) => true,
             (ProductStatus.OutOfStock, ProductStatus.Discontinued) => true,
-            (ProductStatus.Discontinued, _) => false, // фінальний стан
-            _ => false
+            _ => false // решта заборонена, зі стану Discontinued виходу немає
         };
 
         if (!allowed)
@@ -85,23 +75,12 @@ public class Product
         Status = newStatus;
     }
 
-    // Перетворення у DTO (для експорту або сумісності з ЛР3)
-    public ProductDto ToDto()
-    {
-        return new ProductDto(Id, Sku, Name, Unit, _quantity);
-    }
+    public ProductDto ToDto() => new(Id, Sku, Name, Unit, Quantity);
 
-    // Відновлення сутності з DTO з обов'язковою повторною валідацією інваріантів
-    public static Product FromDto(ProductDto dto)
-    {
-        if (dto == null)
-            throw new ArgumentNullException(nameof(dto));
+    // Іде через Create, тому правила перевіряються і при відновленні з DTO
+    public static Product FromDto(ProductDto dto) =>
+        Create(dto.Id, dto.Sku, dto.Name, dto.Unit, dto.Quantity);
 
-        return Create(dto.Id, dto.Sku, dto.Name, dto.Unit, dto.Quantity);
-    }
-
-    public override string ToString()
-    {
-        return $"{Id} [{Sku}] {Name} — {Quantity} {Unit}, статус: {Status}";
-    }
+    public override string ToString() =>
+        $"{Id} [{Sku}] {Name} — {Quantity} {Unit}, статус: {Status}";
 }

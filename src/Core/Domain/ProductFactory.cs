@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using Core.Dto;
 
 namespace Core.Domain;
@@ -15,7 +13,6 @@ public static class ProductFactory
         {
             try
             {
-                // Якщо dto містить некоректні дані, FromDto кине виняток, який ми ловимо
                 products.Add(Product.FromDto(dto));
             }
             catch (Exception ex)
