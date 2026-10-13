@@ -10,10 +10,17 @@ public static class ProductJsonImporter
         PropertyNameCaseInsensitive = true
     };
 
-    public static ImportResult<ProductDto> Load(string path)
+    // onSkipped (необов'язковий): викликається для кожного пропущеного запису
+    public static ImportResult<ProductDto> Load(string path, Action<string>? onSkipped = null)
     {
         var items = new List<ProductDto>();
         var errors = new List<string>();
+
+        void Skip(string message)
+        {
+            errors.Add(message);
+            onSkipped?.Invoke(message);
+        }
 
         try
         {
@@ -26,11 +33,11 @@ public static class ProductJsonImporter
                 var item = deserialized[i];
                 if (string.IsNullOrWhiteSpace(item.Sku) || string.IsNullOrWhiteSpace(item.Name))
                 {
-                    errors.Add($"елемент #{i + 1}: SKU або назва порожні");
+                    Skip($"елемент #{i + 1}: SKU або назва порожні");
                 }
                 else if (item.Quantity < 0)
                 {
-                    errors.Add($"елемент #{i + 1}: кількість '{item.Quantity}' не є невід'ємним числом");
+                    Skip($"елемент #{i + 1}: кількість '{item.Quantity}' не є невід'ємним числом");
                 }
                 else
                 {
@@ -40,7 +47,7 @@ public static class ProductJsonImporter
         }
         catch (JsonException ex)
         {
-            errors.Add($"Помилка структури JSON: {ex.Message}");
+            Skip($"Помилка структури JSON: {ex.Message}");
         }
 
         return new ImportResult<ProductDto>(items, errors);
