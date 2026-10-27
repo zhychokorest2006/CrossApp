@@ -1,120 +1,99 @@
 using System.Text;
+using Core;
 using Core.Abstractions;
-using Core.Domain;
-using Core.Events;
+using Core.Reports;
 using Core.Services;
 
 Console.OutputEncoding = Encoding.UTF8;
 
-// 1. Створюємо сховище і сервіс (composition root)
+// Сховище і сервіс (composition root)
 ICatalogStore store = StoreFactory.Create(args);
 var service = new CatalogService(store);
 
-// 2. Файл журналу: каталог створюємо самі
-string logPath = Path.Combine(AppContext.BaseDirectory, "logs", "app.log");
-Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+// Знімок усіх товарів: звіти рахуються по ньому
+var items = service.All();
 
-// 3. Підписник 1: локальний метод, друкує подію в консоль і у файл
-void OnCatalogChanged(object? sender, CatalogChangedEventArgs e)
+// Команда = перший аргумент, що не починається з "--" (тому --file не плутається з назвою звіту)
+var command = args.FirstOrDefault(a => !a.StartsWith("--")) ?? "report-top";
+
+switch (command)
 {
-    string line = ChangeFormatter.Format(e);
-    Console.WriteLine(line);
+    case "report-top":
+        Console.WriteLine("Топ-5 за залишком:");
+        Print(ReportService.TopByQuantity(items, 5));
+        break;
 
-    try
+    case "report-low":
+        Console.WriteLine("Дефіцит (залишок менше 10):");
+        Print(ReportService.LowStock(items, 10));
+        break;
+
+    case "report-groups":
+        Console.WriteLine("Групування за одиницею виміру:");
+        PrintGroups(ReportService.ByUnit(items));
+        break;
+
+    case "report-sum":
+        var t = ReportService.Totals(items);
+        Console.WriteLine($" позицій {t.Items}, всього {t.Total}, середнє {t.Average:F2}, макс {t.Max}");
+        break;
+
+    // --- додаткові завдання ---
+    case "report-top-units":
+        Console.WriteLine("Топ-3 одиниці виміру за сумарним залишком:");
+        PrintGroups(ReportService.TopUnits(items, 3));
+        break;
+
+    case "report-movements":
+        Console.WriteLine("Топ-5 товарів за кількістю переміщень (GroupJoin):");
+        foreach (var m in ReportService.TopMovements(items, SampleData.Movements(), 5))
+            Console.WriteLine($" {m.Sku,-10} {m.Name,-22} переміщень: {m.Movements,2}  зміна: {m.NetChange,5}");
+        break;
+
+    case "report-groups-query":
+        Console.WriteLine("Групування за одиницею виміру (синтаксис запитів):");
+        PrintGroups(ReportService.ByUnitQuerySyntax(items));
+        break;
+
+    // --- демонстрації ---
+    case "lazy":
+        LazyDemo.Run(service);
+        break;
+
+    case "bench":
+        Benchmark.Run();
+        break;
+
+    case "events":
+        EventsDemo.Run(service, store);
+        break;
+
+    default:
+        Console.WriteLine("Команди: report-top | report-low | report-groups | report-sum | lazy | events");
+        Console.WriteLine("Додаткові: report-top-units | report-movements | report-groups-query | bench");
+        break;
+}
+
+static void Print(IReadOnlyList<StockLine> lines)
+{
+    if (lines.Count == 0)
     {
-        File.AppendAllText(logPath, line + Environment.NewLine);
+        Console.WriteLine("  (порожньо)");
+        return;
     }
-    catch (IOException ex)
+
+    foreach (var l in lines)
+        Console.WriteLine($" {l.Sku,-10} {l.Name,-22} {l.Quantity,6} {l.Unit}");
+}
+
+static void PrintGroups(IReadOnlyList<GroupSummary> groups)
+{
+    if (groups.Count == 0)
     {
-        // Помилка запису в журнал не повинна ламати саму операцію
-        Console.WriteLine($"  (не вдалося записати в журнал: {ex.Message})");
+        Console.WriteLine("  (порожньо)");
+        return;
     }
+
+    foreach (var g in groups)
+        Console.WriteLine($" {g.Key,-6} позицій: {g.Count,3} сумарно: {g.TotalQuantity,6}");
 }
-
-// 4. Підписник 2: лямбда, що збільшує лічильник
-int changes = 0;
-service.Changed += OnCatalogChanged;
-service.Changed += (_, _) => changes++;
-
-// Допоміжний метод, щоб не повторювати рядок виводу товару
-void PrintProduct(Product p) =>
-    Console.WriteLine($"  {p.Id} {p.Sku,-10} {p.Name,-22} {p.Quantity,5} {p.Unit}");
-
-Console.WriteLine($"Сховище: {store.GetType().Name}");
-Console.WriteLine();
-
-// 5. Зміни: кожну з них повідомляє подія
-Console.WriteLine("=== Зміни: кожну повідомляє подія ===");
-var created = service.Add("SKU-101", "Кабель UTP cat6", "м", 50);
-service.Receive(created.Id, 25);
-service.Issue(created.Id, 10);
-
-var temp = service.Add("SKU-102", "Тимчасовий товар", "шт", 3);
-service.Remove(temp.Id);
-Console.WriteLine($"Подій отримано: {changes}");
-
-// 6. Пошук і список
-Console.WriteLine();
-Console.WriteLine("=== Знайти за id ===");
-Console.WriteLine(service.Find(created.Id));
-
-Console.WriteLine();
-Console.WriteLine("=== Усі товари ===");
-foreach (var p in service.All())
-    PrintProduct(p);
-
-Console.WriteLine();
-Console.WriteLine("=== Пошук через Func: залишок менше 100 ===");
-foreach (var p in service.FindAll(p => p.Quantity < 100))
-    PrintProduct(p);
-
-// 7. Відписка: операція виконується, повідомлення немає
-Console.WriteLine();
-Console.WriteLine("=== Після відписки: операція є, повідомлення немає ===");
-service.Changed -= OnCatalogChanged;
-service.Receive(created.Id, 5);
-var updated = service.Find(created.Id);
-Console.WriteLine($"Залишок змінився: {updated?.Quantity}");
-Console.WriteLine($"Подій отримано: {changes}"); // +1 лише від лямбди
-
-// 8. Відмови: помилка є, події немає
-Console.WriteLine();
-Console.WriteLine("=== Сценарій відмови: помилка є, події немає ===");
-
-try
-{
-    service.Receive("NO-SUCH-ID", 5);
-}
-catch (Exception ex)
-{
-    Console.WriteLine($"  помилка: {ex.Message}");
-}
-
-try
-{
-    service.Receive(created.Id, -5);
-}
-catch (Exception ex)
-{
-    Console.WriteLine($"  помилка: {ex.Message}");
-}
-
-try
-{
-    service.Issue(created.Id, 9999);
-}
-catch (Exception ex)
-{
-    Console.WriteLine($"  помилка: {ex.Message}");
-}
-
-Console.WriteLine($"Подій отримано: {changes}"); // не змінилось
-
-// 9. Додаткові завдання
-Console.WriteLine();
-Console.WriteLine("=== Додатково 1: те саме через INotificationSink ===");
-ExtraDemo.RunSinkDemo();
-
-Console.WriteLine();
-Console.WriteLine("=== Додатково 2: Action<string> в імпорті ===");
-ExtraDemo.RunImportDemo();

@@ -1,4 +1,5 @@
 using Core.Domain;
+using Core.Reports;
 
 namespace Core;
 
@@ -23,5 +24,19 @@ public static class SampleData
         Product.Create("P-014", "SKU-014", "Профіль CD 60", "шт", 130),
         Product.Create("P-015", "SKU-015", "Кабель ВВГ 3х2.5", "м", 600),
         Product.Create("P-016", "SKU-016", "Монтажна піна", "шт", 48),
+        Product.Create("P-017", "SKU-017", "Диск відрізний", "шт", 6),
+        Product.Create("P-018", "SKU-018", "Рукавиці робочі", "уп", 8),
+        Product.Create("P-019", "SKU-019", "Лак паркетний", "л", 5),
+    ];
+
+    // Переміщення для додаткового завдання (GroupJoin)
+    public static List<StockMovement> Movements() =>
+    [
+        new("SKU-001", 50), new("SKU-001", -20), new("SKU-001", -10),
+        new("SKU-003", 1000), new("SKU-003", -300),
+        new("SKU-005", -5), new("SKU-005", -3), new("SKU-005", 20), new("SKU-005", -2),
+        new("SKU-010", 40),
+        new("SKU-015", -100), new("SKU-015", 200),
+        new("SKU-017", 10), new("SKU-017", -4),
     ];
 }
