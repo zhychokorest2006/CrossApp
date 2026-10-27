@@ -1,91 +1,111 @@
-using System;
 using System.Text;
-using Core.Domain;
-using Core.Dto;
-
-// далі ваш код сценаріїв...
+using Core;
+using Core.Abstractions;
+using Core.Reports;
+using Core.Services;
 
 Console.OutputEncoding = Encoding.UTF8;
 
-// === Сценарій 1: успіх ===
-Console.WriteLine("=== Сценарій 1: успіх ===");
-var product = Product.Create("P-001", "SKU-001", "Цемент М400 25кг", "шт", 100);
-Console.WriteLine(product);
+// Сховище і сервіс (composition root)
+ICatalogStore store = StoreFactory.Create(args);
+var service = new CatalogService(store);
 
-product.RegisterArrival(20);
-Console.WriteLine(product);
-Console.WriteLine();
+// Знімок усіх товарів: звіти рахуються по ньому
+var items = service.All();
 
-// === Сценарій 2: порушення інваріантів ===
-Console.WriteLine("=== Сценарій 2: порушення інваріантів ===");
+// Команда = перший аргумент, що не починається з "--" (тому --file не плутається з назвою звіту)
+var command = args.FirstOrDefault(a => !a.StartsWith("--")) ?? "report-top";
 
-// 1. Видача більша за залишок
-try
+switch (command)
 {
-    product.Issue(1000);
+    case "report-top":
+        Console.WriteLine("Топ-5 за залишком:");
+        Print(ReportService.TopByQuantity(items, 5));
+        break;
+
+    case "report-low":
+        Console.WriteLine("Дефіцит (залишок менше 10):");
+        Print(ReportService.LowStock(items, 10));
+        break;
+
+    case "report-groups":
+        Console.WriteLine("Групування за одиницею виміру:");
+        PrintGroups(ReportService.ByUnit(items));
+        break;
+
+    case "report-sum":
+        var t = ReportService.Totals(items);
+        Console.WriteLine($" позицій {t.Items}, всього {t.Total}, середнє {t.Average:F2}, макс {t.Max}");
+        break;
+
+    // --- додаткові завдання ---
+    case "report-top-units":
+        Console.WriteLine("Топ-3 одиниці виміру за сумарним залишком:");
+        PrintGroups(ReportService.TopUnits(items, 3));
+        break;
+
+    case "report-movements":
+        Console.WriteLine("Топ-5 товарів за кількістю переміщень (GroupJoin):");
+        foreach (var m in ReportService.TopMovements(items, SampleData.Movements(), 5))
+            Console.WriteLine($" {m.Sku,-10} {m.Name,-22} переміщень: {m.Movements,2}  зміна: {m.NetChange,5}");
+        break;
+
+    case "report-groups-query":
+        Console.WriteLine("Групування за одиницею виміру (синтаксис запитів):");
+        PrintGroups(ReportService.ByUnitQuerySyntax(items));
+        break;
+
+    // --- демонстрації ---
+    case "lazy":
+        LazyDemo.Run(service);
+        break;
+
+    case "bench":
+        Benchmark.Run();
+        break;
+
+    case "events":
+        EventsDemo.Run(service, store);
+        break;
+
+    // --- асинхронний імпорт (ЛР 8) ---
+    case "import":
+        var importPath = args.FirstOrDefault(a => !a.StartsWith("--") && a != command)
+                         ?? Path.Combine("data", "import-ok.json");
+        await ImportDemo.RunAsync(service, importPath);
+        break;
+
+    case "import-big":
+        await ImportDemo.RunBigAsync(service, waitForCtrlC: args.Contains("--wait"));
+        break;
+
+    default:
+        Console.WriteLine("Команди: report-top | report-low | report-groups | report-sum | lazy | events");
+        Console.WriteLine("Додаткові: report-top-units | report-movements | report-groups-query | bench");
+        Console.WriteLine("Імпорт: import [файл] | import-big [--wait]");
+        break;
 }
-catch (InvalidOperationException ex)
+
+static void Print(IReadOnlyList<StockLine> lines)
 {
-    Console.WriteLine($"  видача більша за залишок: {ex.GetType().Name} — {ex.Message}");
+    if (lines.Count == 0)
+    {
+        Console.WriteLine("  (порожньо)");
+        return;
+    }
+
+    foreach (var l in lines)
+        Console.WriteLine($" {l.Sku,-10} {l.Name,-22} {l.Quantity,6} {l.Unit}");
 }
 
-// 2. Порожній SKU
-try
+static void PrintGroups(IReadOnlyList<GroupSummary> groups)
 {
-    Product.Create("P-002", "  ", "Пісок річковий", "т", 10);
-}
-catch (ArgumentException ex)
-{
-    Console.WriteLine($"  порожній SKU: {ex.GetType().Name} — {ex.Message}");
-}
+    if (groups.Count == 0)
+    {
+        Console.WriteLine("  (порожньо)");
+        return;
+    }
 
-// 3. Від'ємний залишок
-try
-{
-    Product.Create("P-003", "SKU-003", "Вапно", "кг", -5);
-}
-catch (ArgumentOutOfRangeException ex)
-{
-    Console.WriteLine($"  від'ємний залишок: {ex.GetType().Name} — {ex.Message}");
-}
-Console.WriteLine();
-
-// === Сценарій 3: перехід станів (додаткове завдання) ===
-Console.WriteLine("=== Сценарій 3: перехід станів (додаткове завдання) ===");
-product.ChangeStatus(ProductStatus.OutOfStock);
-Console.WriteLine($"Новий статус: {product.Status}");
-
-product.ChangeStatus(ProductStatus.Discontinued);
-
-try
-{
-    product.ChangeStatus(ProductStatus.Active);
-}
-catch (InvalidOperationException ex)
-{
-    Console.WriteLine($"  заборонений перехід зі знятого з обліку: {ex.GetType().Name} — {ex.Message}");
-}
-Console.WriteLine();
-
-// === Сценарій 4: інваріант на дві сутності — Warehouse (додаткове завдання) ===
-Console.WriteLine("=== Сценарій 4: інваріант на дві сутності — Warehouse (додаткове завдання) ===");
-var wood = Product.Create("P-100", "SKU-100", "Дошка обрізна", "шт", 50);
-var warehouse = new Warehouse();
-string customerId = "CUST-1";
-
-// Робимо 3 успішні видачі по 5 шт
-warehouse.IssueToCustomer(wood, customerId, 5);
-warehouse.IssueToCustomer(wood, customerId, 5);
-warehouse.IssueToCustomer(wood, customerId, 5);
-
-Console.WriteLine($"Після трьох видач: {wood}");
-
-// 4-та видача має кинути виняток
-try
-{
-    warehouse.IssueToCustomer(wood, customerId, 5);
-}
-catch (InvalidOperationException ex)
-{
-    Console.WriteLine($"  четверта видача тому самому клієнту (ліміт 3): {ex.GetType().Name} — {ex.Message}");
+    foreach (var g in groups)
+        Console.WriteLine($" {g.Key,-6} позицій: {g.Count,3} сумарно: {g.TotalQuantity,6}");
 }

@@ -17,7 +17,7 @@ public sealed class Warehouse
         int alreadyIssued = _issuesPerCustomer.GetValueOrDefault(customerId, 0);
         if (alreadyIssued >= MaxIssuePerCustomer)
         {
-            throw new InvalidOperationException(
+            throw new DomainException(
                 $"Клієнт {customerId} вже отримав {alreadyIssued} видач — ліміт {MaxIssuePerCustomer} вичерпано");
         }
 

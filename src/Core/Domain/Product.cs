@@ -59,7 +59,7 @@ public class Product
                 "Кількість видачі має бути більшою за нуль");
 
         if (amount > _quantity)
-            throw new InvalidOperationException(
+            throw new DomainException(
                 $"Не можна видати {amount}: залишок {Sku} = {_quantity}");
 
         _quantity -= amount;
@@ -79,7 +79,7 @@ public class Product
         };
 
         if (!allowed)
-            throw new InvalidOperationException(
+            throw new DomainException(
                 $"Перехід зі стану {Status} у {newStatus} заборонений");
 
         Status = newStatus;

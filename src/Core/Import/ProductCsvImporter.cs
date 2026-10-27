@@ -8,10 +8,17 @@ public static class ProductCsvImporter
 {
     private const char Separator = ';';
 
-    public static ImportResult<ProductDto> Load(string path)
+    // onSkipped (необов'язковий): викликається для кожного пропущеного рядка
+    public static ImportResult<ProductDto> Load(string path, Action<string>? onSkipped = null)
     {
         var items = new List<ProductDto>();
         var errors = new List<string>();
+
+        void Skip(string message)
+        {
+            errors.Add(message);
+            onSkipped?.Invoke(message);
+        }
 
         string[] lines = File.ReadAllLines(path, Encoding.UTF8);
 
@@ -33,7 +40,7 @@ public static class ProductCsvImporter
                     items.Add(ok.Value);
                     break;
                 case ParseFailed failed:
-                    errors.Add($"рядок {number}: {failed.Reason}");
+                    Skip($"рядок {number}: {failed.Reason}");
                     break;
             }
         }
