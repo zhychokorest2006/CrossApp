@@ -72,6 +72,30 @@ public sealed class CatalogService
         return true;
     }
 
+    // Імпорт: імпортер приходить параметром (ручний DI), а подія піднімається для кожного доданого запису
+    public async Task<int> ImportAsync(ICatalogImporter importer, string path, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(importer);
+        ct.ThrowIfCancellationRequested();
+
+        var items = await importer.LoadAsync(path, ct);
+
+        var added = 0;
+        foreach (var item in items)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            if (_store.GetById(item.Id) is not null)
+                continue;   // такий запис уже є: повторний імпорт нічого не дублює
+
+            _store.Add(item);
+            OnChanged(item.Id, CatalogChangeKind.Added, item.Quantity, item.Quantity);
+            added++;
+        }
+
+        return added;
+    }
+
     public IReadOnlyList<Product> All() => _store.List();
 
     public Product? Find(string id) => _store.GetById(id);
@@ -81,5 +105,5 @@ public sealed class CatalogService
         _store.List().Where(predicate).ToList();
 
     private Product GetOrThrow(string id) =>
-        _store.GetById(id) ?? throw new InvalidOperationException($"Немає запису з id={id}.");
+        _store.GetById(id) ?? throw new DomainException($"Немає запису з id={id}.");
 }

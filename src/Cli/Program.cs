@@ -68,9 +68,21 @@ switch (command)
         EventsDemo.Run(service, store);
         break;
 
+    // --- асинхронний імпорт (ЛР 8) ---
+    case "import":
+        var importPath = args.FirstOrDefault(a => !a.StartsWith("--") && a != command)
+                         ?? Path.Combine("data", "import-ok.json");
+        await ImportDemo.RunAsync(service, importPath);
+        break;
+
+    case "import-big":
+        await ImportDemo.RunBigAsync(service, waitForCtrlC: args.Contains("--wait"));
+        break;
+
     default:
         Console.WriteLine("Команди: report-top | report-low | report-groups | report-sum | lazy | events");
         Console.WriteLine("Додаткові: report-top-units | report-movements | report-groups-query | bench");
+        Console.WriteLine("Імпорт: import [файл] | import-big [--wait]");
         break;
 }
 

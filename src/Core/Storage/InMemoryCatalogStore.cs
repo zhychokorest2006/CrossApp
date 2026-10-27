@@ -26,7 +26,7 @@ public sealed class InMemoryCatalogStore : ICatalogStore
         ArgumentNullException.ThrowIfNull(item);
 
         if (_items.ContainsKey(item.Id))
-            throw new InvalidOperationException($"Запис з id={item.Id} уже існує.");
+            throw new DomainException($"Запис з id={item.Id} уже існує.");
 
         _items.Add(item.Id, item);
     }

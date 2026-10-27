@@ -64,7 +64,7 @@ public sealed class FileCatalogStore : ICatalogStore
         EnsureLoaded();
 
         if (_cache.ContainsKey(item.Id))
-            throw new InvalidOperationException($"Запис з id={item.Id} уже існує.");
+            throw new DomainException($"Запис з id={item.Id} уже існує.");
 
         _cache.Add(item.Id, item);
         Flush();
